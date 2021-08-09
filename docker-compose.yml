@@ -1,0 +1,122 @@
+version: '3.9'
+
+######### Services ###################################
+
+services:
+  mysql:
+    image: mysql:latest
+    environment:
+      - MYSQL_ROOT_PASSWORD=password
+      - MYSQL_DATABASE=landlord
+    ports:
+      - "3306:3306"
+    networks:
+      - familytree365
+
+  # Server container
+  backend:
+    build:
+      context: docker/dev/nginx
+      dockerfile: Dockerfile
+    image: familytree365/backend  # goes to your repository on Docker Hub
+    volumes:
+      - ./docker/dev/nginx/logs:/var/log/nginx
+    ports:
+      # Nuxt port
+      - 8080:80
+      # Laravel port
+      - 8081:81
+    env_file:
+      - ./.env.api
+    depends_on:
+      - frontend
+      - php
+    networks:
+      - familytree365
+
+  # PHP FastCGI Process Manager container
+  php:
+    build:
+      context: docker/dev/php
+      dockerfile: Dockerfile
+    volumes:
+      - ./api:/var/www/api
+    environment:
+      # If you down want to use xDebug, set remote_enable=0
+      XDEBUG_CONFIG: "remote_enable=1"
+      PHP_IDE_CONFIG: "serverName=Docker"
+    depends_on:
+      - mysql
+      - redis
+      - mailhog
+    networks:
+      - familytree365
+
+  # Supervisor container (schedule and queue runner)
+  supervisor:
+    build:
+      context: docker/dev/supervisor
+      dockerfile: Dockerfile
+    volumes:
+      - ./:/var/www/
+      - ./docker/dev/supervisor/conf.d:/etc/supervisor/conf.d
+      - ./docker/dev/supervisor/logs:/var/log
+    depends_on:
+      - mysql
+      - redis
+      - mailhog
+    networks:
+      - familytree365
+
+  echo-server:
+    image: oanhnn/laravel-echo-server:latest
+    ports:
+      - "6001:6001"
+    networks:
+      - familytree365
+
+  # Redis container
+  redis:
+    build:
+      context: docker/dev/redis
+      dockerfile: Dockerfile
+    volumes:
+      - redis:/data
+    ports:
+      - 63791:6379
+    networks:
+      - familytree365
+
+  # Mailhog container (SMTP testing)
+  mailhog:
+    build:
+      context: docker/dev/mailhog
+      dockerfile: Dockerfile
+    ports:
+      - 8026:8025
+    networks:
+      - familytree365
+
+  # frontend container
+  frontend:
+    build:
+      context: docker/dev/frontend
+      dockerfile: Dockerfile
+    image: familytree365/frontend  # goes to your repository on Docker Hub
+    env_file:
+      - ./.env.frontend
+    networks:
+          - familytree365
+
+######### Volumes ###################################
+
+volumes:
+  database:
+    driver: local
+  redis:
+    driver: local
+
+#Docker Networks
+networks:
+  familytree365:
+    driver: bridge
